@@ -1,0 +1,134 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Global AWS Builders Map</title>
+    <script src="https://api.mapbox.com/mapbox-gl-js/v2.15.0/mapbox-gl.js"></script>
+    <link rel="stylesheet" href="https://api.mapbox.com/mapbox-gl-js/v2.15.0/mapbox-gl.css" />
+    <style>
+        body {
+            margin: 0;
+            padding: 0;
+            font-family: Arial, sans-serif;
+            background-color: #f4f4f4; /* Subtle background color for contrast */
+        }
+
+        #map {
+            height: 600px;
+            width: 100%;
+        }
+
+        .header {
+            background: url('image.png') no-repeat center center;
+            background-size: cover; /* Scales the image to cover the entire container */
+            color: white;
+            text-shadow: 1px 1px 4px rgba(0, 0, 0, 0.8);
+            padding: 50px 30px;
+            text-align: right; /* Aligns text to the left */
+            margin: 10px auto;
+            border-radius: 10px;
+            box-shadow: 0 4px 8px rgba(0, 0, 0, 0.2);
+        }
+
+        .header h1 {        
+            font-size: 2rem;
+            margin-bottom: 10px;
+        }
+
+        .header p {
+            font-size: 1rem;
+            margin-bottom: 15px;
+        }
+
+        .header select {
+            padding: 10px;
+            font-size: 16px;
+            border: none;
+            border-radius: 5px;
+            background-color: white;
+            color: #333;
+            outline: none;
+            box-shadow: 0 2px 5px rgba(0, 0, 0, 0.2);
+            cursor: pointer;
+        }
+    </style>
+</head>
+<body>
+    <div class="header">
+        <h1>Global AWS Builders Map</h1>
+        <p>Select a country to explore Community Builders.</p>
+        <select id="countrySelector">
+            <option value="">Select a Country</option>
+        </select>
+    </div>
+
+    <div id="map"></div>
+
+    <script>
+        // Initialize Mapbox map
+        mapboxgl.accessToken = 'pk.eyJ1IjoiYWRraW5zZGV2b24iLCJhIjoiY201aTl6MmR3MG03cDJtc2dmbGI2cXNxZCJ9.VtXSJxXvtoOW-4OaBoo8Dw';
+        const map = new mapboxgl.Map({
+            container: 'map',
+            style: 'mapbox://styles/mapbox/streets-v12',
+            center: [0, 0],
+            zoom: 1.5
+        });
+
+        // Enable terrain for 3D effect
+        map.on('load', () => {
+            map.addSource('mapbox-dem', {
+                type: 'raster-dem',
+                url: 'mapbox://mapbox.terrain-rgb',
+                tileSize: 512,
+                maxzoom: 14
+            });
+            map.setTerrain({ source: 'mapbox-dem', exaggeration: 1.5 });
+        });
+
+        // Fetch countries and populate the dropdown
+        fetch('http://127.0.0.1:5000/countries')
+            .then(response => response.json())
+            .then(countries => {
+                const dropdown = document.getElementById('countrySelector');
+                countries.forEach(country => {
+                    const option = document.createElement('option');
+                    option.value = country;
+                    option.textContent = country;
+                    dropdown.appendChild(option);
+                });
+            })
+            .catch(error => console.error("Error fetching countries:", error));
+
+        // Handle country selection
+        document.getElementById('countrySelector').addEventListener('change', function () {
+            const country = this.value;
+
+            // Remove existing markers
+            const markers = document.querySelectorAll('.mapboxgl-marker');
+            markers.forEach(marker => marker.remove());
+
+            // Fetch builders for the selected country
+            fetch(`http://127.0.0.1:5000/builders?country=${country}`)
+                .then(response => response.json())
+                .then(builders => {
+                    if (builders.length === 0) {
+                        console.warn("No builders found for this country.");
+                        return;
+                    }
+                    builders.forEach(builder => {
+                        if (builder.latitude && builder.longitude) {
+                            new mapboxgl.Marker()
+                                .setLngLat([builder.longitude, builder.latitude])
+                                .setPopup(new mapboxgl.Popup().setHTML(
+                                    `<strong>${builder.name}</strong><br>${builder.description}`
+                                ))
+                                .addTo(map);
+                        }
+                    });
+                })
+                .catch(error => console.error("Error fetching builders:", error));
+        });
+    </script>
+</body>
+</html>
