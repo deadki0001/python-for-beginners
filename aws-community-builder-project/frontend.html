@@ -7,11 +7,13 @@
     <script src="https://api.mapbox.com/mapbox-gl-js/v2.15.0/mapbox-gl.js"></script>
     <link rel="stylesheet" href="https://api.mapbox.com/mapbox-gl-js/v2.15.0/mapbox-gl.css" />
     <style>
-        body {
+        /* General Styles */
+        html, body {
+            height: 100%;
             margin: 0;
             padding: 0;
             font-family: Arial, sans-serif;
-            background-color: #f4f4f4; /* Subtle background color for contrast */
+            background-color: #f4f4f4;
         }
 
         #map {
@@ -21,17 +23,18 @@
 
         .header {
             background: url('image.png') no-repeat center center;
-            background-size: cover; /* Scales the image to cover the entire container */
+            background-size: cover;
             color: white;
             text-shadow: 1px 1px 4px rgba(0, 0, 0, 0.8);
             padding: 50px 30px;
-            text-align: right; /* Aligns text to the left */
+            text-align: right;
             margin: 10px auto;
             border-radius: 10px;
             box-shadow: 0 4px 8px rgba(0, 0, 0, 0.2);
+            position: relative;
         }
 
-        .header h1 {        
+        .header h1 {
             font-size: 2rem;
             margin-bottom: 10px;
         }
@@ -41,32 +44,62 @@
             margin-bottom: 15px;
         }
 
-        .header select {
+        .header select, .header input, .header button {
             padding: 10px;
             font-size: 16px;
+            margin-right: 5px;
             border: none;
             border-radius: 5px;
             background-color: white;
             color: #333;
             outline: none;
-            box-shadow: 0 2px 5px rgba(0, 0, 0, 0.2);
             cursor: pointer;
+        }
+
+        /* Add to Waiting List Button */
+        .waiting-list-link {
+            position: absolute;
+            bottom: 40px;
+            left: 20px;
+            padding: 20px 20px;
+            background-color: orange;
+            color: white;
+            font-weight: bold;
+            text-decoration: none;
+            border-radius: 5px;
+            border: 2px solid darkorange;
+            box-shadow: 0 4px 8px rgba(0, 0, 0, 0.2);
+            transition: all 0.3s ease;
+        }
+
+        .waiting-list-link:hover {
+            background-color: darkorange;
+            border-color: orange;
+            transform: scale(1.1);
         }
     </style>
 </head>
 <body>
+    <!-- Header Section -->
     <div class="header">
         <h1>Global AWS Builders Map</h1>
-        <p>Select a country to explore Community Builders.</p>
+        <p>Select a country or search for a builder.</p>
         <select id="countrySelector">
             <option value="">Select a Country</option>
         </select>
+        <input type="text" id="builderSearch" placeholder="Search Builder by Name">
+        <button id="searchButton">Search</button>
+
+        <!-- Add to Waiting List Link -->
+        <a href="https://pulse.aws/application/BM2AKLSX" class="waiting-list-link" target="_blank">
+            Apply now and join us - We welcome you to the 2025 Cohort!
+        </a>
     </div>
 
+    <!-- Map Section -->
     <div id="map"></div>
 
     <script>
-        // Initialize Mapbox map
         mapboxgl.accessToken = 'pk.eyJ1IjoiYWRraW5zZGV2b24iLCJhIjoiY201aTl6MmR3MG03cDJtc2dmbGI2cXNxZCJ9.VtXSJxXvtoOW-4OaBoo8Dw';
         const map = new mapboxgl.Map({
             container: 'map',
@@ -75,7 +108,6 @@
             zoom: 1.5
         });
 
-        // Enable terrain for 3D effect
         map.on('load', () => {
             map.addSource('mapbox-dem', {
                 type: 'raster-dem',
@@ -86,7 +118,7 @@
             map.setTerrain({ source: 'mapbox-dem', exaggeration: 1.5 });
         });
 
-        // Fetch countries and populate the dropdown
+        // Fetch countries and populate dropdown
         fetch('http://127.0.0.1:5000/countries')
             .then(response => response.json())
             .then(countries => {
@@ -103,12 +135,9 @@
         // Handle country selection
         document.getElementById('countrySelector').addEventListener('change', function () {
             const country = this.value;
-
-            // Remove existing markers
             const markers = document.querySelectorAll('.mapboxgl-marker');
             markers.forEach(marker => marker.remove());
 
-            // Fetch builders for the selected country
             fetch(`http://127.0.0.1:5000/builders?country=${country}`)
                 .then(response => response.json())
                 .then(builders => {
@@ -128,6 +157,48 @@
                     });
                 })
                 .catch(error => console.error("Error fetching builders:", error));
+        });
+
+        // Search functionality
+        document.getElementById('searchButton').addEventListener('click', () => {
+            const builderName = document.getElementById('builderSearch').value.trim();
+
+            if (!builderName) {
+                alert("Please enter a builder's name to search.");
+                return;
+            }
+
+            fetch(`http://127.0.0.1:5000/search?name=${encodeURIComponent(builderName)}`)
+                .then(response => response.json())
+                .then(data => {
+                    if (data.error) {
+                        alert(data.error);
+                    } else if (data.message) {
+                        alert(data.message);
+                    } else {
+                        const builder = data[0];
+                        if (builder.latitude && builder.longitude) {
+                            map.flyTo({
+                                center: [builder.longitude, builder.latitude],
+                                zoom: 5
+                            });
+
+                            new mapboxgl.Marker()
+                                .setLngLat([builder.longitude, builder.latitude])
+                                .setPopup(new mapboxgl.Popup({ offset: 25 })
+                                    .setHTML(
+                                        `<strong>${builder.name}</strong><br>
+                                         ${builder.location}<br>
+                                         ${builder.description}`
+                                    ))
+                                .addTo(map)
+                                .togglePopup();
+                        } else {
+                            alert("Builder found, but location coordinates are missing.");
+                        }
+                    }
+                })
+                .catch(error => console.error("Error searching for builder:", error));
         });
     </script>
 </body>

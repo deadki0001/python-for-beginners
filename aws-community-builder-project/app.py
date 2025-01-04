@@ -87,7 +87,7 @@ def get_builders_geojson():
                 "type": "Feature",
                 "properties": {
                     "name": builder["name"],
-                    "country": builder["country"],  # Updated to country
+                    "country": builder["country"],
                     "location": builder["location"],
                     "description": builder["description"]
                 },
@@ -99,6 +99,27 @@ def get_builders_geojson():
             geojson["features"].append(feature)
 
     return jsonify(geojson)
+
+
+@app.route('/search', methods=['GET'])
+def search_builder():
+    """Search for a builder by name."""
+    load_builders_data()  # Ensure data is loaded
+
+    name = request.args.get('name', '').strip().lower()
+    if not name:
+        return jsonify({"error": "Name parameter is required."}), 400
+
+    # Perform a case-insensitive search for the name
+    matching_builders = [
+        builder for builder in builders_data
+        if name in builder["name"].lower()
+    ]
+
+    if matching_builders:
+        return jsonify(matching_builders)
+    else:
+        return jsonify({"message": "No builder found with the specified name."}), 404
 
 
 if __name__ == '__main__':
