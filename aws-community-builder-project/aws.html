@@ -1,0 +1,280 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Global AWS Builders Map</title>
+    <script src="https://api.mapbox.com/mapbox-gl-js/v2.15.0/mapbox-gl.js"></script>
+    <link rel="stylesheet" href="https://api.mapbox.com/mapbox-gl-js/v2.15.0/mapbox-gl.css" />
+    <style>
+        /* General Styles */
+        html, body {
+            height: 100%;
+            margin: 0;
+            padding: 0;
+            font-family: Arial, sans-serif;
+            background-color: #f4f4f4;
+        }
+
+        #map {
+            height: 600px;
+            width: 100%;
+        }
+
+        .header {
+            background: url('image.png') no-repeat center center;
+            background-size: cover;
+            color: white;
+            text-shadow: 1px 1px 4px rgba(0, 0, 0, 0.8);
+            padding: 50px 30px;
+            position: relative;
+            margin: 10px auto;
+            border-radius: 10px;
+            box-shadow: 0 4px 8px rgba(0, 0, 0, 0.2);
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+        }
+
+        /* Right-Aligned Header Content */
+        .right-content {
+            text-align: right;
+        }
+
+        .header h1 {
+            font-size: 2rem;
+            margin: 0;
+        }
+
+        .header p {
+            font-size: 1rem;
+            margin: 10px 0 15px;
+        }
+
+        .search-container {
+            display: inline-block;
+            text-align: right;
+        }
+
+        .search-container select,
+        .search-container input,
+        .search-container button {
+            padding: 10px;
+            font-size: 16px;
+            margin: 5px 0;
+            border: none;
+            border-radius: 5px;
+            background-color: white;
+            color: #333;
+            outline: none;
+            cursor: pointer;
+        }
+
+        /* Video Section Centered */
+        .video-wrapper {
+            text-align: right;
+            flex: 1;
+            position: relative;
+            top: -1;
+            left: -11%;
+            right: 0;
+        }
+
+        .video-wrapper iframe {
+            width: 300px;
+            height: 150px;
+            position: center;
+            border: none;
+            border-radius: 10px;
+            box-shadow: 0 4px 8px rgba(0, 0, 0, 0.2);
+        }
+
+        .video-text {
+            color: white;
+            font-size: 2rem;
+            position: center;
+            margin-top: 10px;
+            text-shadow: 1px 1px 4px rgba(0, 0, 0, 0.8);
+        }
+
+        /* Additional Utility Classes for Alignment */
+        .video-centered {
+            top: 50%;
+            left: 50%;
+            transform: translate(-90%, -90%);
+        }
+
+        .video-top-left {
+            top: 50px;
+            left: 50px;
+        }
+
+        .video-top-right {
+            top: 50px;
+            left: calc(100% - 300px);
+        }
+
+        .video-bottom-left {
+            bottom: 50px;
+            left: 50px;
+        }
+
+        .video-bottom-right {
+            bottom: 10px;
+            left: calc(100% - 250px);
+        }
+
+        /* Waiting List Link */
+        .waiting-list-link {
+            position: absolute;
+            bottom: 60px;
+            left: 20px;
+            padding: 15px 20px;
+            background-color: orange;
+            color: white;
+            font-weight: bold;
+            text-decoration: none;
+            border-radius: 5px;
+            border: 2px solid darkorange;
+            box-shadow: 0 4px 8px rgba(0, 0, 0, 0.2);
+            transition: all 0.3s ease;
+        }
+
+        .waiting-list-link:hover {
+            background-color: darkorange;
+            border-color: orange;
+            transform: scale(1.1);
+        }
+    </style>
+</head>
+<body>
+    <div class="header">
+        <div class="video-wrapper">
+            <iframe
+                src="https://www.youtube.com/embed/dms7RlAPNDs"
+                title="AWS Community Builders Winners 2024"
+                allow="accelerometer; autoplay; clipboard-write; encrypted-media; gyroscope; picture-in-picture"
+                allowfullscreen>
+            </iframe>
+            <div class="video-text">Highlights from 2024</div>
+        </div>
+
+        <div class="right-content">
+            <h1>Global AWS Builders Map</h1>
+            <p>Select a country or search for a builder.</p>
+            <div class="search-container">
+                <select id="countrySelector">
+                    <option value="">Select a Country</option>
+                </select>
+                <input type="text" id="builderSearch" placeholder="Search Builder by Name">
+                <button id="searchButton">Search</button>
+            </div>
+        </div>
+
+        <a href="https://pulse.aws/application/BM2AKLSX" class="waiting-list-link" target="_blank">
+            Apply now and join us - We welcome you to the 2025 Cohort!
+        </a>
+    </div>
+
+    <div id="map"></div>
+
+    <script>
+        mapboxgl.accessToken = 'pk.eyJ1IjoiYWRraW5zZGV2b24iLCJhIjoiY201aTl6MmR3MG03cDJtc2dmbGI2cXNxZCJ9.VtXSJxXvtoOW-4OaBoo8Dw';
+        const map = new mapboxgl.Map({
+            container: 'map',
+            style: 'mapbox://styles/mapbox/streets-v12',
+            center: [0, 0],
+            zoom: 1.5
+        });
+
+        map.on('load', () => {
+            map.addSource('mapbox-dem', {
+                type: 'raster-dem',
+                url: 'mapbox://mapbox.terrain-rgb',
+                tileSize: 512,
+                maxzoom: 14
+            });
+            map.setTerrain({ source: 'mapbox-dem', exaggeration: 1.5 });
+        });
+
+        // Fetch countries and populate dropdown
+        fetch('https://awscommunity-global-map.deadkithedeveloper.click/api/countries')
+            .then(response => response.json())
+            .then(countries => {
+                const dropdown = document.getElementById('countrySelector');
+                Object.keys(countries).forEach(country => {
+                    const option = document.createElement('option');
+                    option.value = country;
+                    option.textContent = country;
+                    dropdown.appendChild(option);
+                });
+            })
+            .catch(error => console.error("Error fetching countries:", error));
+
+        // Handle country selection
+        document.getElementById('countrySelector').addEventListener('change', function () {
+            const country = this.value;
+            const markers = document.querySelectorAll('.mapboxgl-marker');
+            markers.forEach(marker => marker.remove());
+
+            // Fetch country-specific builders
+            fetch(`https://awscommunity-global-map.deadkithedeveloper.click/api/builders?country=${country}`)
+                .then(response => response.json())
+                .then(builders => {
+                    if (builders.length === 0) {
+                        console.warn("No builders found for this country.");
+                        return;
+                    }
+                    builders.forEach(builder => {
+                        if (builder.latitude && builder.longitude) {
+                            new mapboxgl.Marker()
+                                .setLngLat([builder.longitude, builder.latitude])
+                                .setPopup(new mapboxgl.Popup().setHTML(
+                                    `<strong>${builder.name}</strong><br>${builder.description}`
+                                ))
+                                .addTo(map);
+                        }
+                    });
+                })
+                .catch(error => console.error("Error fetching builders:", error));
+        });
+
+        // Handle builder search separately
+        document.getElementById('searchButton').addEventListener('click', function() {
+            const builderName = document.getElementById('builderSearch').value;
+
+            fetch(`https://awscommunity-global-map.deadkithedeveloper.click/api/search?name=${encodeURIComponent(builderName)}`)
+                .then(response => response.json())
+                .then(data => {
+                    if (data.error) {
+                        alert(data.error);
+                    } else if (data.message) {
+                        alert(data.message);
+                    } else {
+                        const builder = data[0];
+                        if (builder.latitude && builder.longitude) {
+                            map.flyTo({
+                                center: [builder.longitude, builder.latitude],
+                                zoom: 5
+                            });
+
+                            new mapboxgl.Marker()
+                                .setLngLat([builder.longitude, builder.latitude])
+                                .setPopup(new mapboxgl.Popup({ offset: 25 })
+                                    .setHTML(
+                                        `<strong>${builder.name}</strong><br>
+                                        ${builder.location}<br>
+                                        ${builder.description}`
+                                    ))
+                                .addTo(map)
+                                .togglePopup();
+                        } else {
+                            alert("Builder found, but location coordinates are missing.");
+                        }
+                    }
+                })
+                .catch(error => console.error("Error searching for builder:", error));
+        });
+    </script>
+</body>
+</html>

@@ -5,6 +5,10 @@ from flask_cors import CORS  # Import Flask-CORS
 
 app = Flask(__name__)
 
+@app.route('/')
+def homepage():
+    return send_from_directory('static', 'frontend.html')
+
 # Enable CORS for all routes
 CORS(app)
 
