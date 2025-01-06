@@ -1,5 +1,5 @@
 from flask import Flask, send_from_directory, jsonify, request
-from scrape import scrape_builders
+from scrape import *
 from geopy.geocoders import Nominatim
 from flask_cors import CORS
 import os

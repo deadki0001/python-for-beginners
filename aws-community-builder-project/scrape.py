@@ -1,111 +1,130 @@
 from playwright.sync_api import sync_playwright
 import requests
 from geopy.geocoders import Nominatim
+import json
 import time
+import logging
 
 # Initialize headers and geolocator
 headers = {'User-Agent': 'AwsGlobalMap/1.0'}
 geolocator = Nominatim(user_agent="AwsGlobalMap")
 
+# Configure logging
+logging.basicConfig(level=logging.INFO, format='%(asctime)s - %(message)s')
+logger = logging.getLogger()
+
+# File paths for caching
+CACHE_FILE = 'builders_cache.json'
+GEO_CACHE_FILE = 'geo_cache.json'
+
 # Continent mapping
 continent_map = {
-    "Africa": [
-        "Algeria", "Angola", "Benin", "Botswana", "Burkina Faso", "Burundi", "Cabo Verde", 
-        "Cameroon", "Central African Republic", "Chad", "Comoros", "Congo", "Djibouti", 
-        "Egypt", "Equatorial Guinea", "Eritrea", "Eswatini", "Ethiopia", "Gabon", "Gambia", 
-        "Ghana", "Guinea", "Guinea-Bissau", "Ivory Coast", "Kenya", "Lesotho", "Liberia", 
-        "Libya", "Madagascar", "Malawi", "Mali", "Mauritania", "Mauritius", "Morocco", 
-        "Mozambique", "Namibia", "Niger", "Nigeria", "Rwanda", "Sao Tome and Principe", 
-        "Senegal", "Seychelles", "Sierra Leone", "Somalia", "South Africa", "South Sudan", 
-        "Sudan", "Tanzania", "Togo", "Tunisia", "Uganda", "Zambia", "Zimbabwe"
-    ],
-    "Asia": [
-        "Afghanistan", "Armenia", "Azerbaijan", "Bahrain", "Bangladesh", "Bhutan", 
-        "Brunei", "Cambodia", "China", "Cyprus", "Georgia", "India", "Indonesia", 
-        "Iran", "Iraq", "Israel", "Japan", "Jordan", "Kazakhstan", "Kuwait", "Kyrgyzstan", 
-        "Laos", "Lebanon", "Malaysia", "Maldives", "Mongolia", "Myanmar", "Nepal", "North Korea", 
-        "Oman", "Pakistan", "Palestine", "Philippines", "Qatar", "Saudi Arabia", 
-        "Singapore", "South Korea", "Sri Lanka", "Syria", "Tajikistan", "Thailand", 
-        "Timor-Leste", "Turkey", "Turkmenistan", "United Arab Emirates", "Uzbekistan", 
-        "Vietnam", "Yemen"
-    ],
-    "Europe": [
-        "Albania", "Andorra", "Armenia", "Austria", "Azerbaijan", "Belarus", "Belgium", 
-        "Bosnia and Herzegovina", "Bulgaria", "Croatia", "Cyprus", "Czech Republic", 
-        "Denmark", "Estonia", "Finland", "France", "Georgia", "Germany", "Greece", 
-        "Hungary", "Iceland", "Ireland", "Italy", "Kazakhstan", "Kosovo", "Latvia", 
-        "Liechtenstein", "Lithuania", "Luxembourg", "Malta", "Moldova", "Monaco", 
-        "Montenegro", "Netherlands", "North Macedonia", "Norway", "Poland", "Portugal", 
-        "Romania", "Russia", "San Marino", "Serbia", "Slovakia", "Slovenia", "Spain", 
-        "Sweden", "Switzerland", "Turkey", "Ukraine", "United Kingdom", "Vatican City"
-    ],
-    "North America": [
-        "Antigua and Barbuda", "Bahamas", "Barbados", "Belize", "Canada", "Costa Rica", 
-        "Cuba", "Dominica", "Dominican Republic", "El Salvador", "Grenada", "Guatemala", 
-        "Haiti", "Honduras", "Jamaica", "Mexico", "Nicaragua", "Panama", "Saint Kitts and Nevis", 
-        "Saint Lucia", "Saint Vincent and the Grenadines", "Trinidad and Tobago", "United States", "USA"
-    ],
-    "South America": [
-        "Argentina", "Bolivia", "Brazil", "Chile", "Colombia", "Ecuador", "Guyana", 
-        "Paraguay", "Peru", "Suriname", "Uruguay", "Venezuela"
-    ],
-    "Oceania": [
-        "Australia", "Fiji", "Kiribati", "Marshall Islands", "Micronesia", "Nauru", 
-        "New Zealand", "Palau", "Papua New Guinea", "Samoa", "Solomon Islands", 
-        "Tonga", "Tuvalu", "Vanuatu"
-    ]
+    "Africa": [...],
+    "Asia": [...],
+    "Europe": [...],
+    "North America": [...],
+    "South America": [...],
+    "Oceania": [...]
 }
 
+def save_cache(data):
+    """Save scraping progress to a cache file."""
+    with open(CACHE_FILE, 'w') as f:
+        json.dump(data, f)
 
-def normalize_location(location):
-    """Normalize location and map to a continent."""
-    for country, continent in continent_map.items():
-        if country.lower() in location.lower():
-            return continent
-    return "Unknown"
+def load_cache():
+    """Load scraping progress from the cache file."""
+    try:
+        with open(CACHE_FILE, 'r') as f:
+            return json.load(f)
+    except FileNotFoundError:
+        return {"last_page": 0, "builders": []}
+
+def save_geo_cache(cache):
+    """Save geocoding results to a cache file."""
+    with open(GEO_CACHE_FILE, 'w') as f:
+        json.dump(cache, f)
+
+def load_geo_cache():
+    """Load geocoding results from the cache file."""
+    try:
+        with open(GEO_CACHE_FILE, 'r') as f:
+            return json.load(f)
+    except FileNotFoundError:
+        return {}
+
+geo_cache = load_geo_cache()
+
+def geocode_location(location):
+    """Geocode a location and cache the results."""
+    if location in geo_cache:
+        return geo_cache[location]
+
+    try:
+        geo = geolocator.geocode(location, timeout=10)
+        if geo:
+            geo_cache[location] = (geo.latitude, geo.longitude)
+            save_geo_cache(geo_cache)
+            return geo.latitude, geo.longitude
+    except Exception as e:
+        logger.error(f"Geocoding failed for {location}: {e}")
+    return None, None
 
 def scrape_builders():
     """Scrape builder data from the AWS Community Builders directory."""
     base_url = "https://aws.amazon.com/developer/community/community-builders/community-builders-directory/"
-    builders = []
+    cache = load_cache()
+    last_page = cache.get("last_page", 0)
+    builders = cache.get("builders", [])
 
     with sync_playwright() as p:
         browser = p.chromium.launch(headless=True)
         page = browser.new_page()
+        page.set_default_timeout(600000)  # Set timeout to 10 minutes
 
-        # Loop through the first 3 pages
-        for page_num in range(1, 2):
-            print(f"Scraping page {page_num}...")
-            page.goto(f"{base_url}?awsm.page-cb-cards={page_num}", timeout=60000)
-            page.wait_for_selector('.lb-xbcol.m-showcase-card.aws-card-item', timeout=30000)
+        for page_num in range(last_page + 1, 150):
+            logger.info(f"Scraping page {page_num}...")
+            try:
+                page.goto(f"{base_url}?awsm.page-cb-cards={page_num}")
+                page.wait_for_selector('.lb-xbcol.m-showcase-card.aws-card-item')
 
-            builder_cards = page.query_selector_all('.lb-xbcol.m-showcase-card.aws-card-item')
-            for card in builder_cards:
-                name = card.query_selector('.m-headline').inner_text().strip()
-                location = card.query_selector('.m-category').inner_text().strip()
-                description = card.query_selector('.m-desc').inner_text().strip()
+                builder_cards = page.query_selector_all('.lb-xbcol.m-showcase-card.aws-card-item')
+                for card in builder_cards:
+                    try:
+                        name = card.query_selector('.m-headline').inner_text().strip()
+                        location = card.query_selector('.m-category').inner_text().strip()
+                        description = card.query_selector('.m-desc').inner_text().strip()
+                        country = location.split(",")[-1].strip()
 
-                country = location.split(",")[-1].strip()  # Extract country from location
+                        latitude, longitude = geocode_location(location)
 
-                latitude, longitude = None, None
-                try:
-                    geo = geolocator.geocode(location, timeout=10)
-                    if geo:
-                        latitude, longitude = geo.latitude, geo.longitude
-                except Exception as e:
-                    print(f"Geocoding failed for {location}: {e}")
+                        builders.append({
+                            "name": name,
+                            "location": location,
+                            "description": description,
+                            "country": country,
+                            "latitude": latitude,
+                            "longitude": longitude
+                        })
+                    except Exception as e:
+                        logger.error(f"Error extracting data from card: {e}")
 
-                builders.append({
-                    "name": name,
-                    "location": location,
-                    "description": description,
-                    "country": country,
-                    "latitude": latitude,
-                    "longitude": longitude
-                })
+                save_cache({"last_page": page_num, "builders": builders})
+            except Exception as e:
+                logger.error(f"Error on page {page_num}: {e}")
+                break  # Stop scraping to handle errors or retry later
 
-            time.sleep(2)  # Optional delay
+            time.sleep(2)
 
         browser.close()
 
     return builders
+
+if __name__ == "__main__":
+    logger.info("Starting scraping...")
+    builder_data = scrape_builders()
+    logger.info("Scraping complete. Saving data to 'builders.json'.")
+
+    # Save the final data to a JSON file
+    with open('builders.json', 'w') as f:
+        json.dump(builder_data, f, indent=4)
